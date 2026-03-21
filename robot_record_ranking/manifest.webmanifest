@@ -1,0 +1,19 @@
+{
+  "name": "로봇대회 운영 앱",
+  "short_name": "로봇대회 앱",
+  "description": "기록 경기 순위표와 대진표 생성기를 모바일에서 앱처럼 사용할 수 있는 PWA입니다.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4ecdf",
+  "theme_color": "#174f39",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
