@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#174f39">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>로봇대회 운영 앱</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icon.svg" type="image/svg+xml">
+  <script defer src="./pwa.js"></script>
+  <style>
+    :root {
+      --bg-top: #f4ecdf;
+      --bg-bottom: #d7e6df;
+      --panel: rgba(255, 252, 246, 0.9);
+      --panel-strong: rgba(255, 255, 255, 0.96);
+      --ink: #1f3029;
+      --muted: #5c6d64;
+      --line: rgba(26, 76, 52, 0.14);
+      --accent: #1b6d4b;
+      --accent-deep: #103e2b;
+      --accent-soft: #ddf0e6;
+      --shadow: rgba(23, 46, 35, 0.14);
+      --warm: #d79b46;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(255, 255, 255, 0.84), transparent 24%),
+        radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.42), transparent 28%),
+        linear-gradient(160deg, var(--bg-top), var(--bg-bottom));
+      padding:
+        max(18px, env(safe-area-inset-top))
+        max(18px, env(safe-area-inset-right))
+        max(24px, env(safe-area-inset-bottom))
+        max(18px, env(safe-area-inset-left));
+    }
+
+    a,
+    button {
+      font: inherit;
+    }
+
+    .shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      gap: 18px;
+    }
+
+    .panel,
+    .hero {
+      border-radius: 28px;
+      border: 1px solid rgba(255, 255, 255, 0.72);
+      box-shadow: 0 22px 54px var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 14px 18px;
+      background: rgba(255, 255, 255, 0.72);
+    }
+
+    .brand {
+      display: grid;
+      gap: 3px;
+    }
+
+    .brand strong {
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .brand span {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .topbar-links {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .topbar-link,
+    .quick-link,
+    .install-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      text-decoration: none;
+      font-weight: 800;
+      transition: transform 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease;
+    }
+
+    .topbar-link,
+    .quick-link {
+      padding: 11px 16px;
+      color: var(--accent-deep);
+      background: rgba(221, 240, 230, 0.92);
+      border: 1px solid rgba(27, 109, 75, 0.12);
+    }
+
+    .topbar-link:hover,
+    .quick-link:hover,
+    .install-button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 22px rgba(16, 62, 43, 0.14);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 32px;
+      color: #f8fff9;
+      background:
+        radial-gradient(circle at top right, rgba(250, 222, 175, 0.46), transparent 32%),
+        linear-gradient(135deg, rgba(16, 62, 43, 0.98), rgba(32, 112, 79, 0.9));
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: -86px;
+      bottom: -86px;
+      width: 250px;
+      height: 250px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .hero-copy {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 18px;
+    }
+
+    .hero-kicker {
+      display: inline-flex;
+      width: fit-content;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: 0.86rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+    }
+
+    .hero h1 {
+      margin: 0;
+      max-width: 9ch;
+      font-size: clamp(2.3rem, 8vw, 4.2rem);
+      line-height: 0.98;
+      letter-spacing: -0.05em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 62ch;
+      color: rgba(248, 255, 249, 0.9);
+      line-height: 1.75;
+      font-size: 1rem;
+    }
+
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .install-panel {
+      display: none;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 20px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 22px;
+    }
+
+    .install-panel.is-visible {
+      display: flex;
+    }
+
+    .install-copy {
+      display: grid;
+      gap: 4px;
+    }
+
+    .install-copy strong {
+      font-size: 1rem;
+    }
+
+    .install-copy span {
+      color: rgba(248, 255, 249, 0.84);
+      line-height: 1.6;
+      font-size: 0.92rem;
+    }
+
+    .install-button {
+      border: 0;
+      cursor: pointer;
+      padding: 12px 18px;
+      color: #173c2c;
+      background: linear-gradient(135deg, #fff4e1, #fbe1ad);
+      white-space: nowrap;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18px;
+      align-items: start;
+    }
+
+    .panel {
+      padding: 24px;
+      background: var(--panel);
+    }
+
+    .panel h2,
+    .panel h3 {
+      margin: 0;
+      letter-spacing: -0.03em;
+    }
+
+    .panel-header {
+      display: grid;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .panel-header p,
+    .feature-copy p,
+    .deploy-list li,
+    .status-list li {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .feature-card {
+      display: grid;
+      gap: 12px;
+      padding: 20px;
+      border-radius: 22px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 249, 245, 0.94));
+      border: 1px solid var(--line);
+    }
+
+    .feature-tag {
+      display: inline-flex;
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: rgba(27, 109, 75, 0.08);
+      color: var(--accent);
+      font-size: 0.8rem;
+      font-weight: 800;
+    }
+
+    .feature-card strong {
+      font-size: 1.3rem;
+      letter-spacing: -0.03em;
+    }
+
+    .feature-card p {
+      margin: 0;
+      line-height: 1.7;
+      color: var(--muted);
+    }
+
+    .feature-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 4px;
+    }
+
+    .primary-link {
+      color: #fff;
+      background: linear-gradient(135deg, var(--accent), #2a8c63);
+    }
+
+    .primary-link,
+    .secondary-link {
+      padding: 12px 16px;
+    }
+
+    .secondary-link {
+      color: var(--accent-deep);
+      background: rgba(255, 255, 255, 0.94);
+      border: 1px solid var(--line);
+    }
+
+    .status-list,
+    .deploy-list {
+      padding-left: 18px;
+      margin: 0;
+      display: grid;
+      gap: 10px;
+    }
+
+    .mini-panel {
+      display: grid;
+      gap: 14px;
+      padding: 18px;
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+    }
+
+    .mini-panel strong {
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+    }
+
+    .chip-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 8px 11px;
+      background: rgba(255, 255, 255, 0.9);
+      border: 1px solid var(--line);
+      color: var(--accent-deep);
+      font-size: 0.86rem;
+      font-weight: 700;
+    }
+
+    .footer-note {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.92rem;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 920px) {
+      .grid,
+      .feature-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      body {
+        padding:
+          max(14px, env(safe-area-inset-top))
+          max(14px, env(safe-area-inset-right))
+          max(20px, env(safe-area-inset-bottom))
+          max(14px, env(safe-area-inset-left));
+      }
+
+      .panel,
+      .hero {
+        border-radius: 22px;
+      }
+
+      .topbar,
+      .panel {
+        padding: 18px;
+      }
+
+      .hero {
+        padding: 24px 20px;
+      }
+
+      .hero h1 {
+        max-width: none;
+      }
+
+      .install-panel,
+      .topbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+  </style>
+</head>
+<body data-app-page="home">
+  <main class="shell">
+    <nav class="panel topbar" aria-label="앱 이동">
+      <div class="brand">
+        <strong>로봇대회 운영 앱</strong>
+        <span>모바일 홈 화면 설치와 정적 배포를 지원합니다.</span>
+      </div>
+      <div class="topbar-links">
+        <a class="topbar-link" href="./ranking.html" data-page-link="ranking">기록 순위표</a>
+        <a class="topbar-link" href="./bracket.html" data-page-link="bracket">대진표 생성</a>
+      </div>
+    </nav>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <span class="hero-kicker">PWA Mobile Edition</span>
+        <h1>로봇대회 운영을 앱처럼</h1>
+        <p>기록 경기 순위표와 토너먼트 대진표를 하나의 모바일 웹앱으로 묶었습니다. 휴대폰 브라우저에서 열고 홈 화면에 추가하면 설치형 앱처럼 사용할 수 있고, 정적 호스팅만으로 바로 배포할 수 있습니다.</p>
+        <div class="hero-actions">
+          <a class="quick-link primary-link" href="./ranking.html" data-page-link="ranking">순위표 열기</a>
+          <a class="quick-link secondary-link" href="./bracket.html" data-page-link="bracket">대진표 열기</a>
+        </div>
+        <div class="install-panel" data-install-panel>
+          <div class="install-copy">
+            <strong>홈 화면에 추가</strong>
+            <span data-install-status>지원되는 브라우저에서는 이 버튼으로 바로 설치할 수 있습니다.</span>
+          </div>
+          <button class="install-button" type="button" data-install-button>앱 설치</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="grid">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>앱 구성</h2>
+          <p>기존 두 화면을 하나의 배포 폴더로 정리해 모바일에서 쓰기 쉬운 흐름으로 묶었습니다.</p>
+        </div>
+
+        <div class="feature-grid">
+          <article class="feature-card">
+            <span class="feature-tag">기록 경기</span>
+            <strong>자동 순위 계산</strong>
+            <p>점수형과 시간형 기록을 모두 처리하고, 동점 처리 규칙까지 반영해 순위를 즉시 계산합니다.</p>
+            <div class="feature-actions">
+              <a class="quick-link primary-link" href="./ranking.html" data-page-link="ranking">기록 순위표 실행</a>
+            </div>
+          </article>
+
+          <article class="feature-card">
+            <span class="feature-tag">토너먼트</span>
+            <strong>대진표 생성과 결과 관리</strong>
+            <p>그룹전, 녹아웃전, 혼합형 대진을 모바일에서도 쉽게 생성하고 결과를 저장할 수 있습니다.</p>
+            <div class="feature-actions">
+              <a class="quick-link primary-link" href="./bracket.html" data-page-link="bracket">대진표 실행</a>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <aside class="panel">
+        <div class="panel-header">
+          <h2>배포 상태</h2>
+          <p>모바일 배포에 필요한 기본 구성이 이미 포함되어 있습니다.</p>
+        </div>
+
+        <div class="mini-panel">
+          <strong>포함된 항목</strong>
+          <div class="chip-row">
+            <span class="chip">PWA Manifest</span>
+            <span class="chip">Service Worker</span>
+            <span class="chip">오프라인 캐시</span>
+            <span class="chip">홈 화면 설치</span>
+          </div>
+          <ul class="status-list">
+            <li>한 폴더만 올리면 되는 정적 사이트 구조입니다.</li>
+            <li>`https://` 환경에서 설치형 앱처럼 동작합니다.</li>
+            <li>로컬에서는 `start.command`로 `http://127.0.0.1` 서버를 띄웁니다.</li>
+          </ul>
+        </div>
+
+        <div class="mini-panel">
+          <strong>권장 배포 방법</strong>
+          <ol class="deploy-list">
+            <li>이 폴더 전체를 Netlify Drop, GitHub Pages, Vercel 같은 정적 호스팅에 업로드합니다.</li>
+            <li>모바일에서 배포 주소를 열고 브라우저의 홈 화면 추가 기능을 사용합니다.</li>
+            <li>현장 운영용이면 아이폰과 안드로이드에서 각각 한 번씩 설치 동작을 확인합니다.</li>
+          </ol>
+        </div>
+      </aside>
+    </section>
+
+    <p class="footer-note">배포 루트는 현재 폴더 하나면 충분합니다. 순위표와 대진표는 모두 같은 앱 안에서 이동할 수 있도록 정리되어 있습니다.</p>
+  </main>
+</body>
+</html>
