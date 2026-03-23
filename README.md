@@ -43,7 +43,6 @@ python3 -m http.server 8787
 ```text
 https://<github-username>.github.io/<repository-name>/
 ```
-
 ## 참고
 
 - PWA 기능은 `file://` 로 직접 열면 제한됩니다.
