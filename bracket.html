@@ -11,6 +11,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <script defer src="./pwa.js"></script>
+  <script src="./sheet-sync.js"></script>
   <style>
     :root {
       --bg-top: #f2efe5;
@@ -433,6 +434,39 @@
       gap: 10px;
       flex-wrap: wrap;
       margin-bottom: 16px;
+    }
+
+    .sheet-panel {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 18px;
+      padding: 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 248, 244, 0.94));
+      border: 1px solid var(--line);
+    }
+
+    .sheet-panel__header {
+      display: grid;
+      gap: 6px;
+    }
+
+    .sheet-panel__header strong {
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .sheet-panel__header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.92rem;
+    }
+
+    .sheet-status {
+      min-height: 1.4em;
+      color: var(--muted);
+      font-size: 0.9rem;
     }
 
     .report-capture {
@@ -858,6 +892,23 @@
           <p>그룹전 일정표와 녹아웃 대진은 선택한 방식에 맞춰 바로 렌더링됩니다.</p>
         </div>
 
+        <section class="sheet-panel" aria-labelledby="sheetPanelTitle">
+          <div class="sheet-panel__header">
+            <strong id="sheetPanelTitle">Google Sheet 저장 설정</strong>
+            <p>Apps Script 웹앱 URL을 입력해두면 현재 대진표와 경기결과를 시트에 누적 저장할 수 있습니다.</p>
+          </div>
+          <div class="field">
+            <label for="sheetEndpointInput">Apps Script Web App URL</label>
+            <input id="sheetEndpointInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+            <div class="hint">Apps Script를 웹앱으로 배포한 뒤 나온 `/exec` 주소를 넣어주세요.</div>
+          </div>
+          <div class="export-actions">
+            <button type="button" class="secondary" id="saveSheetConfigButton">저장 URL 기억</button>
+            <button type="button" class="primary" id="saveBracketSheetButton">Google Sheet로 저장</button>
+          </div>
+          <div class="sheet-status" id="sheetStatus"></div>
+        </section>
+
         <div class="export-actions">
           <button type="button" class="secondary" id="exportPdfButton">PDF로 저장</button>
           <button type="button" class="ghost" id="exportPngButton">PNG로 저장</button>
@@ -909,6 +960,8 @@
     const results = document.getElementById("results");
     const reportCapture = document.getElementById("reportCapture");
     const exportStatus = document.getElementById("exportStatus");
+    const sheetEndpointInput = document.getElementById("sheetEndpointInput");
+    const sheetStatus = document.getElementById("sheetStatus");
 
     const formatOptions = [
       {
@@ -1497,11 +1550,29 @@
     }
 
     function getJudgeNames() {
-      const judges = judgeNamesInput.value
-        .split(/\n|,/)
-        .map((name) => name.trim())
-        .filter(Boolean);
+      const judges = sheetSync.normalizeJudgeNames(judgeNamesInput.value);
       return judges.length > 0 ? judges : ["미입력"];
+    }
+
+    function getSheetEndpoint() {
+      return sheetEndpointInput.value.trim();
+    }
+
+    function setSheetStatus(message, isError = false) {
+      sheetStatus.textContent = message;
+      sheetStatus.style.color = isError ? "var(--danger)" : "var(--muted)";
+    }
+
+    function rememberSheetEndpoint() {
+      const endpoint = getSheetEndpoint();
+      if (!endpoint) {
+        setSheetStatus("Apps Script 웹앱 URL을 먼저 입력해주세요.", true);
+        return null;
+      }
+
+      sheetSync.saveConfig({ endpoint });
+      setSheetStatus("저장 URL을 현재 브라우저에 기억했습니다.");
+      return endpoint;
     }
 
     function renderReportHeader() {
@@ -2012,6 +2083,214 @@
       }
     }
 
+    function buildBracketSheetPayload() {
+      const state = lastGeneratedState;
+      const generatedAt = new Date().toISOString();
+      const judges = getJudgeNames();
+      const teamNames = normalizeTeams();
+      const payload = {
+        app: "robot-tournament-bracket",
+        sheetName: "BracketResults",
+        generatedAt,
+        eventTitle: getEventTitle(),
+        judges,
+        teamCount: getSelectedTeamCount(),
+        format: getSelectedFormat(),
+        formatTitle: formatOptions.find((option) => option.id === getSelectedFormat())?.title || "미선택",
+        teams: teamNames,
+        rows: []
+      };
+
+      if (!state) {
+        payload.rows = teamNames.map((teamName, index) => ({
+          generatedAt,
+          eventTitle: payload.eventTitle,
+          judges: judges.join(", "),
+          stageLabel: "대진표 미생성",
+          rowType: "team",
+          rowLabel: `참가팀 ${index + 1}`,
+          groupName: "",
+          roundName: "",
+          matchId: "",
+          teamA: teamName,
+          teamB: "",
+          result: "",
+          winner: "",
+          note: "대진표 생성 전 저장"
+        }));
+        return payload;
+      }
+
+      payload.stageLabel = state.stageLabel;
+
+      if (state.groupStage) {
+        const standingMap = buildStandingMap(state.groupStage, state.groupResults || {});
+
+        state.groupStage.groups.forEach((group) => {
+          const standings = standingMap.get(group.name) || [];
+          standings.forEach((row) => {
+            payload.rows.push({
+              generatedAt,
+              eventTitle: payload.eventTitle,
+              judges: judges.join(", "),
+              stageLabel: state.stageLabel,
+              rowType: "group-standing",
+              rowLabel: `${group.name} 순위`,
+              groupName: group.name,
+              roundName: "",
+              matchId: "",
+              teamA: row.team,
+              teamB: "",
+              result: `${row.points}점`,
+              winner: row.rank <= 2 && state.stageLabel === "그룹 + 녹아웃" ? "진출권" : "",
+              note: `순위 ${row.rank}, ${row.played}전 ${row.wins}승 ${row.draws}무 ${row.losses}패`
+            });
+          });
+
+          group.rounds.forEach((round, roundIndex) => {
+            round.forEach((match) => {
+              if (match.type !== "match") {
+                payload.rows.push({
+                  generatedAt,
+                  eventTitle: payload.eventTitle,
+                  judges: judges.join(", "),
+                  stageLabel: state.stageLabel,
+                  rowType: "group-bye",
+                  rowLabel: `${group.name} ${roundIndex + 1}라운드`,
+                  groupName: group.name,
+                  roundName: `${roundIndex + 1}라운드`,
+                  matchId: match.id || "",
+                  teamA: "",
+                  teamB: "",
+                  result: "",
+                  winner: "",
+                  note: match.text
+                });
+                return;
+              }
+
+              const result = (state.groupResults || {})[match.id] || "pending";
+              payload.rows.push({
+                generatedAt,
+                eventTitle: payload.eventTitle,
+                judges: judges.join(", "),
+                stageLabel: state.stageLabel,
+                rowType: "group-match",
+                rowLabel: `${group.name} ${roundIndex + 1}라운드`,
+                groupName: group.name,
+                roundName: `${roundIndex + 1}라운드`,
+                matchId: match.id,
+                teamA: match.teamA,
+                teamB: match.teamB,
+                result,
+                winner: result === "teamA" ? match.teamA : result === "teamB" ? match.teamB : "",
+                note: result === "draw" ? "무승부" : result === "pending" ? "결과 미입력" : "결과 입력 완료"
+              });
+            });
+          });
+        });
+      }
+
+      if (state.seedEntries) {
+        const standingMap = state.groupStage ? buildStandingMap(state.groupStage, state.groupResults || {}) : null;
+        const resolvedEntries = state.stageLabel === "그룹 + 녹아웃"
+          ? state.seedEntries.map((entry) => resolveAdvancingSlot(entry, standingMap))
+          : state.seedEntries;
+        const bracket = createKnockoutRoundsFromEntries(resolvedEntries, state.knockoutResults || {});
+
+        bracket.rounds.forEach((round) => {
+          round.matches.forEach((match) => {
+            payload.rows.push({
+              generatedAt,
+              eventTitle: payload.eventTitle,
+              judges: judges.join(", "),
+              stageLabel: state.stageLabel,
+              rowType: "knockout-match",
+              rowLabel: round.title,
+              groupName: "",
+              roundName: round.title,
+              matchId: match.id,
+              teamA: match.teamA,
+              teamB: match.teamB,
+              result: match.result,
+              winner: match.winner || "",
+              note: match.note
+            });
+          });
+        });
+
+        const bronzeMatch = getBronzeMatch(bracket, state.knockoutResults || {});
+        if (bronzeMatch) {
+          payload.rows.push({
+            generatedAt,
+            eventTitle: payload.eventTitle,
+            judges: judges.join(", "),
+            stageLabel: state.stageLabel,
+            rowType: "bronze-match",
+            rowLabel: "3,4위전",
+            groupName: "",
+            roundName: "3,4위전",
+            matchId: bronzeMatch.id,
+            teamA: bronzeMatch.teamA,
+            teamB: bronzeMatch.teamB,
+            result: bronzeMatch.result,
+            winner: bronzeMatch.winner || "",
+            note: bronzeMatch.note
+          });
+        }
+
+        const summary = getKnockoutSummary(bracket, bronzeMatch);
+        [
+          ["우승", summary?.champion || ""],
+          ["준우승", summary?.runnerUp || ""],
+          ["3위", summary?.thirdPlace || ""],
+          ["4위", summary?.fourthPlace || ""]
+        ].forEach(([label, teamName]) => {
+          payload.rows.push({
+            generatedAt,
+            eventTitle: payload.eventTitle,
+            judges: judges.join(", "),
+            stageLabel: state.stageLabel,
+            rowType: "final-summary",
+            rowLabel: label,
+            groupName: "",
+            roundName: "최종 결과",
+            matchId: "",
+            teamA: teamName,
+            teamB: "",
+            result: "",
+            winner: teamName,
+            note: teamName ? `${label} 확정` : `${label} 미정`
+          });
+        });
+      }
+
+      return payload;
+    }
+
+    async function saveBracketResultsToSheet() {
+      const endpoint = rememberSheetEndpoint();
+      if (!endpoint) {
+        return;
+      }
+
+      const payload = buildBracketSheetPayload();
+      if (!payload.rows.length) {
+        setSheetStatus("저장할 대진표 데이터가 없습니다.", true);
+        return;
+      }
+
+      setSheetStatus("Google Sheet로 대진표와 경기결과를 저장하고 있습니다...");
+
+      try {
+        const response = await sheetSync.postJson(endpoint, payload);
+        const count = response?.count ?? payload.rows.length;
+        setSheetStatus(`${count}개 행을 Google Sheet에 저장했습니다.`);
+      } catch (error) {
+        setSheetStatus(`저장에 실패했습니다: ${error.message}`, true);
+      }
+    }
+
     results.addEventListener("change", (event) => {
       const target = event.target;
       if (!(target instanceof HTMLSelectElement) || !target.classList.contains("match-result-select")) {
@@ -2081,6 +2360,8 @@
     document.getElementById("resetNamesButton").addEventListener("click", clearNames);
     document.getElementById("generateButton").addEventListener("click", generateBracket);
     document.getElementById("shuffleButton").addEventListener("click", reshuffleBracket);
+    document.getElementById("saveSheetConfigButton").addEventListener("click", rememberSheetEndpoint);
+    document.getElementById("saveBracketSheetButton").addEventListener("click", saveBracketResultsToSheet);
     document.getElementById("exportPdfButton").addEventListener("click", () => {
       exportStatus.textContent = "브라우저 인쇄 창을 엽니다. 대상에서 PDF로 저장을 선택하세요.";
       renderReportHeader();
@@ -2088,6 +2369,8 @@
     });
     document.getElementById("exportPngButton").addEventListener("click", exportAsPng);
 
+    sheetEndpointInput.value = sheetSync.getStoredConfig().endpoint;
+    setSheetStatus(sheetEndpointInput.value ? "저장 URL이 불러와졌습니다." : "Apps Script 웹앱 URL을 입력하면 이 브라우저에 기억됩니다.");
     populateTeamCounts();
     updateFormatOptions();
     syncTeamInputs();

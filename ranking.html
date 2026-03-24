@@ -11,6 +11,7 @@
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <script defer src="./pwa.js"></script>
+  <script src="./sheet-sync.js"></script>
   <style>
     :root {
       --bg-top: #f3ecdf;
@@ -311,6 +312,39 @@
       display: grid;
       gap: 16px;
       margin-top: 18px;
+    }
+
+    .sheet-panel {
+      display: grid;
+      gap: 14px;
+      margin-bottom: 18px;
+      padding: 18px;
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 248, 244, 0.94));
+      border: 1px solid var(--line);
+    }
+
+    .sheet-panel__header {
+      display: grid;
+      gap: 6px;
+    }
+
+    .sheet-panel__header strong {
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    .sheet-panel__header p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.92rem;
+    }
+
+    .sheet-status {
+      min-height: 24px;
+      color: var(--muted);
+      font-size: 0.92rem;
     }
 
     .input-note {
@@ -821,6 +855,23 @@
           <p>입력한 두 차례 기록을 기준으로 순위가 자동 계산됩니다. 출력할 때는 아래 저장 버튼을 사용하세요.</p>
         </div>
 
+        <section class="sheet-panel" aria-labelledby="sheetPanelTitle">
+          <div class="sheet-panel__header">
+            <strong id="sheetPanelTitle">Google Sheet 저장 설정</strong>
+            <p>배포한 Google Apps Script 웹앱 URL을 한 번 입력하면 이 브라우저에 기억해두고, 현재 순위표를 시트에 한 번에 저장합니다.</p>
+          </div>
+          <div class="field">
+            <label for="sheetEndpointInput">Apps Script Web App URL</label>
+            <input id="sheetEndpointInput" type="url" placeholder="https://script.google.com/macros/s/.../exec">
+            <div class="hint">Apps Script를 웹앱으로 배포한 뒤 나온 `/exec` 주소를 넣어주세요.</div>
+          </div>
+          <div class="export-actions">
+            <button type="button" class="secondary" id="saveSheetConfigButton">저장 URL 기억</button>
+            <button type="button" class="primary" id="saveRankingSheetButton">Google Sheet로 저장</button>
+          </div>
+          <div class="sheet-status" id="sheetStatus"></div>
+        </section>
+
         <div class="export-actions">
           <button type="button" class="secondary" id="exportPdfButton">PDF로 저장</button>
           <button type="button" class="ghost" id="exportPngButton">PNG로 저장</button>
@@ -872,6 +923,8 @@
     const leaderboardContainer = document.getElementById("leaderboardContainer");
     const exportStatus = document.getElementById("exportStatus");
     const reportCapture = document.getElementById("reportCapture");
+    const sheetEndpointInput = document.getElementById("sheetEndpointInput");
+    const sheetStatus = document.getElementById("sheetStatus");
 
     const sampleRows = [
       { team: "로보메이커스 A", round1Score: "88", round1Time: "18.41", round2Score: "92", round2Time: "17.92" },
@@ -996,7 +1049,8 @@
 
     function getEntries() {
       return Array.from(entryTableBody.querySelectorAll("tr")).map((row, index) => {
-        const teamName = row.querySelector(".team-name-input").value.trim() || `팀 ${index + 1}`;
+        const rawTeamName = row.querySelector(".team-name-input").value.trim();
+        const teamName = rawTeamName || `팀 ${index + 1}`;
         const round1ScoreRaw = row.querySelector(".round1-score-input").value;
         const round1TimeRaw = row.querySelector(".round1-time-input").value;
         const round2ScoreRaw = row.querySelector(".round2-score-input").value;
@@ -1012,6 +1066,7 @@
         return {
           id: row.dataset.rowId,
           index,
+          rawTeamName,
           teamName,
           round1ScoreRaw,
           round1TimeRaw,
@@ -1032,6 +1087,10 @@
 
     function getRecordType() {
       return recordTypeSelect.value;
+    }
+
+    function getJudges() {
+      return sheetSync.normalizeJudgeNames(judgeNamesInput.value);
     }
 
     function isTimeMode() {
@@ -1432,6 +1491,103 @@
       renderLeaderboard(rankedEntries);
     }
 
+    function getSheetEndpoint() {
+      return sheetEndpointInput.value.trim();
+    }
+
+    function setSheetStatus(message, isError = false) {
+      sheetStatus.textContent = message;
+      sheetStatus.style.color = isError ? "var(--danger)" : "var(--muted)";
+    }
+
+    function rememberSheetEndpoint() {
+      const endpoint = getSheetEndpoint();
+      if (!endpoint) {
+        setSheetStatus("Apps Script 웹앱 URL을 먼저 입력해주세요.", true);
+        return null;
+      }
+
+      sheetSync.saveConfig({ endpoint });
+      setSheetStatus("저장 URL을 현재 브라우저에 기억했습니다.");
+      return endpoint;
+    }
+
+    function buildRankingSheetPayload() {
+      const rankedEntries = buildRankedEntries(
+        getEntries().filter((entry) => entry.rawTeamName || entry.fullEntryCount > 0)
+      );
+      const judges = getJudges();
+      const generatedAt = new Date().toISOString();
+      const eventTitle = eventTitleInput.value.trim() || "로봇 기록 경기";
+
+      return {
+        app: "robot-record-ranking",
+        sheetName: "RankingResults",
+        generatedAt,
+        eventTitle,
+        judges,
+        recordType: getRecordType(),
+        recordTypeLabel: getRecordTypeLabel(),
+        rankMode: rankModeSelect.value,
+        rankModeLabel: getModeLabel(rankModeSelect.value),
+        tieBreakerOne: tieBreakerOneSelect.value,
+        tieBreakerOneLabel: getModeLabel(tieBreakerOneSelect.value),
+        tieBreakerTwo: tieBreakerTwoSelect.value,
+        tieBreakerTwoLabel: getModeLabel(tieBreakerTwoSelect.value),
+        tiePolicy: tiePolicySelect.value,
+        tiePolicyLabel: tiePolicySelect.value === "shared" ? "같은 기록은 공동 순위" : "끝까지 강제 구분",
+        recordUnit: recordUnitInput.value.trim(),
+        rows: rankedEntries.map((entry) => ({
+          generatedAt,
+          eventTitle,
+          judges: judges.join(", "),
+          teamName: entry.teamName,
+          rank: entry.rank,
+          status: getStatus(entry).label,
+          round1Score: entry.round1Score,
+          round1Time: entry.round1Time,
+          round2Score: entry.round2Score,
+          round2Time: entry.round2Time,
+          primaryMetric: entry.primaryMetric,
+          primaryMetricDisplay: formatRecord(entry.primaryMetric),
+          recordType: getRecordType(),
+          recordTypeLabel: getRecordTypeLabel(),
+          rankMode: rankModeSelect.value,
+          rankModeLabel: getModeLabel(rankModeSelect.value),
+          tieBreakerOne: tieBreakerOneSelect.value,
+          tieBreakerOneLabel: getModeLabel(tieBreakerOneSelect.value),
+          tieBreakerTwo: tieBreakerTwoSelect.value,
+          tieBreakerTwoLabel: getModeLabel(tieBreakerTwoSelect.value),
+          tiePolicy: tiePolicySelect.value,
+          tiePolicyLabel: tiePolicySelect.value === "shared" ? "같은 기록은 공동 순위" : "끝까지 강제 구분",
+          recordUnit: recordUnitInput.value.trim()
+        }))
+      };
+    }
+
+    async function saveRankingResultsToSheet() {
+      const endpoint = rememberSheetEndpoint();
+      if (!endpoint) {
+        return;
+      }
+
+      const payload = buildRankingSheetPayload();
+      if (!payload.rows.length) {
+        setSheetStatus("저장할 참가팀 데이터가 없습니다. 팀 행을 먼저 입력해주세요.", true);
+        return;
+      }
+
+      setSheetStatus("Google Sheet로 경기결과를 저장하고 있습니다...");
+
+      try {
+        const response = await sheetSync.postJson(endpoint, payload);
+        const count = response?.count ?? payload.rows.length;
+        setSheetStatus(`${count}개 행을 Google Sheet에 저장했습니다.`);
+      } catch (error) {
+        setSheetStatus(`저장에 실패했습니다: ${error.message}`, true);
+      }
+    }
+
     function escapeHtml(value) {
       return String(value)
         .replace(/&/g, "&amp;")
@@ -1558,6 +1714,8 @@
     document.getElementById("sampleButton").addEventListener("click", fillSampleData);
     document.getElementById("clearScoresButton").addEventListener("click", clearScores);
     document.getElementById("resetTableButton").addEventListener("click", () => resetTable(8));
+    document.getElementById("saveSheetConfigButton").addEventListener("click", rememberSheetEndpoint);
+    document.getElementById("saveRankingSheetButton").addEventListener("click", saveRankingResultsToSheet);
     document.getElementById("exportPdfButton").addEventListener("click", () => {
       exportStatus.textContent = "브라우저 인쇄 창을 엽니다. 대상에서 PDF로 저장을 선택하세요.";
       recompute();
@@ -1565,6 +1723,8 @@
     });
     document.getElementById("exportPngButton").addEventListener("click", exportAsPng);
 
+    sheetEndpointInput.value = sheetSync.getStoredConfig().endpoint;
+    setSheetStatus(sheetEndpointInput.value ? "저장 URL이 불러와졌습니다." : "Apps Script 웹앱 URL을 입력하면 이 브라우저에 기억됩니다.");
     resetTable(8);
     ensureMinimumRows(8);
     updateRecordGuide();

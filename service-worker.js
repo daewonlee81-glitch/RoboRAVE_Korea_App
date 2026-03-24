@@ -1,4 +1,4 @@
-const CACHE_NAME = "robot-tournament-pwa-v1";
+const CACHE_NAME = "robot-tournament-pwa-v3";
 const APP_SHELL = [
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./icon.svg",
   "./pwa.js",
+  "./sheet-sync.js",
 ];
 
 self.addEventListener("install", (event) => {
@@ -33,6 +34,22 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse.ok) {
+            const clonedResponse = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clonedResponse));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+        .then((response) => response || caches.match("./index.html")),
+    );
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
@@ -49,13 +66,7 @@ self.addEventListener("fetch", (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clonedResponse));
           return networkResponse;
         })
-        .catch(() => {
-          if (event.request.mode === "navigate") {
-            return caches.match("./index.html");
-          }
-
-          return caches.match("./icon.svg");
-        });
+        .catch(() => caches.match("./icon.svg"));
     }),
   );
 });
