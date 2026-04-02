@@ -1570,6 +1570,11 @@
         return null;
       }
 
+      if (!sheetSync.isAppsScriptExecUrl(endpoint)) {
+        setSheetStatus("Google Sheet 주소가 아니라 Apps Script 배포 후 받은 `/exec` 웹앱 URL을 입력해주세요.", true);
+        return null;
+      }
+
       sheetSync.saveConfig({ endpoint });
       setSheetStatus("저장 URL을 현재 브라우저에 기억했습니다.");
       return endpoint;
@@ -2284,6 +2289,11 @@
 
       try {
         const response = await sheetSync.postJson(endpoint, payload);
+        if (response?.opaque) {
+          setSheetStatus("저장 요청을 전송했습니다. Apps Script 응답은 브라우저 정책상 바로 읽지 못할 수 있으니 시트에 반영됐는지 확인해주세요.");
+          return;
+        }
+
         const count = response?.count ?? payload.rows.length;
         setSheetStatus(`${count}개 행을 Google Sheet에 저장했습니다.`);
       } catch (error) {

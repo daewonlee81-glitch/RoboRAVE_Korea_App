@@ -2,6 +2,7 @@
 
 (function attachSheetSync(global) {
   const STORAGE_KEY = "robotCompetitionSheetConfig";
+  const APPS_SCRIPT_EXEC_PATTERN = /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec(?:\?.*)?$/i;
 
   function getStoredConfig() {
     try {
@@ -27,34 +28,65 @@
     return nextConfig;
   }
 
-  async function postJson(endpoint, payload) {
+  function isAppsScriptExecUrl(endpoint) {
+    return APPS_SCRIPT_EXEC_PATTERN.test(String(endpoint || "").trim());
+  }
+
+  async function postJsonNoCors(endpoint, payload) {
     const response = await fetch(endpoint, {
       method: "POST",
+      mode: "no-cors",
       headers: {
         "Content-Type": "text/plain;charset=utf-8"
       },
       body: JSON.stringify(payload)
     });
 
-    const text = await response.text();
-    let data = null;
+    return {
+      ok: true,
+      opaque: response.type === "opaque",
+      count: Array.isArray(payload?.rows) ? payload.rows.length : 0
+    };
+  }
 
+  async function postJson(endpoint, payload) {
     try {
-      data = text ? JSON.parse(text) : null;
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const text = await response.text();
+      let data = null;
+
+      try {
+        data = text ? JSON.parse(text) : null;
+      } catch (error) {
+        data = null;
+      }
+
+      if (!response.ok) {
+        const message = data?.error || `HTTP ${response.status}`;
+        throw new Error(message);
+      }
+
+      if (data && data.ok === false) {
+        throw new Error(data.error || "Google Sheet 저장에 실패했습니다.");
+      }
+
+      return data;
     } catch (error) {
-      data = null;
-    }
+      const message = error?.message || String(error);
 
-    if (!response.ok) {
-      const message = data?.error || `HTTP ${response.status}`;
-      throw new Error(message);
-    }
+      if (isAppsScriptExecUrl(endpoint) && /Failed to fetch|NetworkError/i.test(message)) {
+        return postJsonNoCors(endpoint, payload);
+      }
 
-    if (data && data.ok === false) {
-      throw new Error(data.error || "Google Sheet 저장에 실패했습니다.");
+      throw error;
     }
-
-    return data;
   }
 
   function normalizeJudgeNames(value) {
@@ -67,6 +99,7 @@
   global.sheetSync = {
     getStoredConfig,
     saveConfig,
+    isAppsScriptExecUrl,
     postJson,
     normalizeJudgeNames
   };
